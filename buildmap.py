@@ -4,10 +4,12 @@ A conversational assistant that guides users through building n8n workflows phas
 """
 
 import os
+import json
 import streamlit as st
 from openai import OpenAI
 from dotenv import load_dotenv
 from pathlib import Path
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -61,6 +63,21 @@ MODELS = {
     "openai/gpt-4o-mini": "GPT-4o Mini",
     "anthropic/claude-3-haiku": "Claude 3 Haiku"
 }
+
+# Create exports directory
+EXPORTS_DIR = Path(__file__).parent / "exports"
+os.makedirs(EXPORTS_DIR, exist_ok=True)
+
+def save_workflow(workflow_json: dict, phase_name: str) -> str:
+    """Save workflow JSON to file and return filename"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"workflow_{phase_name}_{timestamp}.json"
+    filepath = EXPORTS_DIR / filename
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(workflow_json, f, indent=2)
+
+    return filename
 
 def load_system_prompt() -> str:
     """Load the system prompt from file."""
@@ -186,6 +203,37 @@ def main():
                 file_name="buildmap_conversation.md",
                 mime="text/markdown"
             )
+
+        st.divider()
+
+        # Workflow exports section
+        st.subheader("📥 Workflow Exports")
+        if EXPORTS_DIR.exists():
+            export_files = sorted(
+                [f for f in EXPORTS_DIR.iterdir() if f.suffix == '.json'],
+                key=lambda x: x.stat().st_mtime,
+                reverse=True
+            )
+            if export_files:
+                st.caption(f"Found {len(export_files)} workflow file(s)")
+                # Show last 5 exports
+                for filepath in export_files[:5]:
+                    with open(filepath, 'rb') as f:
+                        file_content = f.read()
+                        st.download_button(
+                            label=f"📄 {filepath.name}",
+                            data=file_content,
+                            file_name=filepath.name,
+                            mime="application/json",
+                            key=f"download_{filepath.name}",
+                            use_container_width=True
+                        )
+                if len(export_files) > 5:
+                    st.caption(f"+ {len(export_files) - 5} more file(s) in exports/")
+            else:
+                st.caption("No workflow exports yet")
+        else:
+            st.caption("No workflow exports yet")
 
         st.divider()
 
