@@ -4,6 +4,7 @@ BuildMap Workflow Manager - Handles workflow creation and phase management
 
 import re
 import json
+from datetime import datetime
 from typing import Dict, Any, Optional, Tuple
 from n8n_integration.n8n_client import n8n_client
 import streamlit as st
@@ -91,6 +92,17 @@ class WorkflowManager:
     
     def handle_workflow_creation(self, workflow_json: Dict[str, Any], original_response: str) -> str:
         """Handle workflow creation or update in n8n"""
+        
+        # Ensure workflow has a valid name
+        if not workflow_json.get('name') or not str(workflow_json.get('name', '')).strip():
+            # Try to extract name from the AI response
+            name_match = re.search(r'"name"\s*:\s*"([^"]+)"', original_response)
+            if name_match:
+                workflow_json['name'] = name_match.group(1)
+            else:
+                # Generate a default name
+                workflow_json['name'] = f"BuildMap Workflow - {datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        
         # Check if this is a phase-based workflow
         phase_match = re.search(r'Phase\s+(\d+)', workflow_json.get('name', ''), re.IGNORECASE)
         
@@ -106,7 +118,7 @@ class WorkflowManager:
             return self.create_new_workflow(workflow_json, original_response)
     
     def create_new_workflow(self, workflow_json: Dict[str, Any], original_response: str) -> str:
-        """Create a new workflow in n8n"""
+        """Create a new workflow in n8n with enhanced error handling"""
         result = self.client.create_workflow(workflow_json)
         
         if result["success"]:
@@ -123,15 +135,64 @@ class WorkflowManager:
             n8n_link = result["url"]
             return f"{original_response}\n\n🎉 **Phase {st.session_state.current_phase} created in n8n!**\n\n[Open in n8n]({n8n_link})\n\n**Next Steps:**\n1. Test the workflow in n8n\n2. Come back here when ready for Phase {st.session_state.current_phase + 1}"
         else:
-            return f"{original_response}\n\n❌ **Failed to create workflow in n8n:** {result['error']}"
+            # Enhanced error handling with debugging information
+            error_msg = result.get('error', 'Unknown error')
+            details = result.get('details', '')
+            suggestion = result.get('suggestion', 'Check your n8n configuration')
+            status_code = result.get('status_code', 'N/A')
+            
+            error_section = f"\n\n❌ **Failed to create workflow in n8n**\n"
+            error_section += f"**Error:** {error_msg}\n"
+            
+            if details:
+                error_section += f"**Details:** {details}\n"
+            
+            if status_code != 'N/A':
+                error_section += f"**Status Code:** {status_code}\n"
+            
+            error_section += f"**Suggestion:** {suggestion}\n"
+            
+            # Add debugging info for common issues
+            if "Bad request" in error_msg or "400" in str(status_code):
+                error_section += f"\n**Debugging Tips:**\n"
+                error_section += f"- Check workflow JSON structure\n"
+                error_section += f"- Validate all required fields are present\n"
+                error_section += f"- Remove read-only fields like 'active' and 'tags'\n"
+                error_section += f"- Ensure 'settings' field exists\n"
+            
+            elif "unauthorized" in error_msg.lower() or "401" in str(status_code):
+                error_section += f"\n**Debugging Tips:**\n"
+                error_section += f"- Check N8N_API_KEY in .env file\n"
+                error_section += f"- Verify API key is valid in n8n UI\n"
+                error_section += f"- Ensure API authentication is enabled\n"
+            
+            elif "not found" in error_msg.lower() or "404" in str(status_code):
+                error_section += f"\n**Debugging Tips:**\n"
+                error_section += f"- Check N8N_BASE_URL in .env file\n"
+                error_section += f"- Verify REST API is enabled in n8n\n"
+                error_section += f"- Ensure endpoint paths are correct\n"
+            
+            return f"{original_response}{error_section}"
     
     def update_existing_workflow(self, workflow_json: Dict[str, Any], original_response: str) -> str:
-        """Update existing workflow with new phase"""
+        """Update existing workflow with new phase and enhanced error handling"""
         # First, get the existing workflow
         existing_result = self.client.get_workflow(st.session_state.current_workflow_id)
         
         if not existing_result["success"]:
-            return f"{original_response}\n\n❌ **Cannot update workflow:** {existing_result['error']}"
+            error_msg = existing_result.get('error', 'Unknown error')
+            details = existing_result.get('details', '')
+            suggestion = existing_result.get('suggestion', 'Check workflow ID')
+            
+            error_section = f"\n\n❌ **Cannot update workflow**\n"
+            error_section += f"**Error:** {error_msg}\n"
+            
+            if details:
+                error_section += f"**Details:** {details}\n"
+            
+            error_section += f"**Suggestion:** {suggestion}\n"
+            
+            return f"{original_response}{error_section}"
         
         # Merge the workflows
         existing_workflow = existing_result["workflow"]
@@ -151,7 +212,37 @@ class WorkflowManager:
             n8n_link = self.client.get_workflow_url(st.session_state.current_workflow_id)
             return f"{original_response}\n\n✅ **Phase {st.session_state.current_phase} added to workflow!**\n\n[Open in n8n]({n8n_link})\n\n**Next Steps:**\n1. Test the updated workflow\n2. Continue with Phase {st.session_state.current_phase + 1} when ready"
         else:
-            return f"{original_response}\n\n❌ **Failed to update workflow:** {update_result['error']}"
+            # Enhanced error handling for update failures
+            error_msg = update_result.get('error', 'Unknown error')
+            details = update_result.get('details', '')
+            suggestion = update_result.get('suggestion', 'Check your n8n configuration')
+            status_code = update_result.get('status_code', 'N/A')
+            
+            error_section = f"\n\n❌ **Failed to update workflow**\n"
+            error_section += f"**Error:** {error_msg}\n"
+            
+            if details:
+                error_section += f"**Details:** {details}\n"
+            
+            if status_code != 'N/A':
+                error_section += f"**Status Code:** {status_code}\n"
+            
+            error_section += f"**Suggestion:** {suggestion}\n"
+            
+            # Add debugging info for common update issues
+            if "conflict" in error_msg.lower() or "409" in str(status_code):
+                error_section += f"\n**Debugging Tips:**\n"
+                error_section += f"- Check for node ID conflicts\n"
+                error_section += f"- Verify node names are unique\n"
+                error_section += f"- Ensure connections reference existing nodes\n"
+            
+            elif "not found" in error_msg.lower() or "404" in str(status_code):
+                error_section += f"\n**Debugging Tips:**\n"
+                error_section += f"- Verify workflow ID exists\n"
+                error_section += f"- Check if workflow was deleted\n"
+                error_section += f"- Ensure you're updating the correct workflow\n"
+            
+            return f"{original_response}{error_section}"
     
     def reset_current_workflow(self):
         """Reset the current workflow state"""

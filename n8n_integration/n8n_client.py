@@ -112,21 +112,35 @@ class N8NClient:
         """Validate workflow JSON before sending to n8n"""
         required_fields = ["name", "nodes"]  # connections may be optional
 
+        # Check required fields with more detailed error messages
         for field in required_fields:
             if field not in workflow_json:
-                return False, f"Missing required field: {field}"
+                return False, f"Missing required field: '{field}'. Workflow JSON must contain: {required_fields}"
+            if field == "name" and (not workflow_json["name"] or not str(workflow_json["name"]).strip()):
+                return False, "Workflow name is empty or invalid. Please provide a valid workflow name."
 
         if not workflow_json["nodes"] or len(workflow_json["nodes"]) == 0:
-            return False, "Workflow must have at least one node"
+            return False, "Workflow must have at least one node. Current nodes: {workflow_json.get('nodes', [])}"
 
         # Check node structure
         for node in workflow_json["nodes"]:
             if "name" not in node or "type" not in node:
-                return False, f"Node missing name or type: {node}"
+                return False, f"Node missing required fields (name/type): {node}"
 
-        # Remove 'active' field if present (read-only in some n8n versions)
-        if "active" in workflow_json:
-            del workflow_json["active"]
+        # Remove read-only fields that cause issues in some n8n versions
+        # These fields cannot be set when creating/updating workflows via API
+        read_only_fields = ["active", "tags", "version", "createdAt", "updatedAt", "id", "versionId"]
+        for field in read_only_fields:
+            if field in workflow_json:
+                del workflow_json[field]
+
+        # Ensure settings field exists (required by some n8n versions)
+        if 'settings' not in workflow_json:
+            workflow_json['settings'] = {}
+
+        # Ensure connections field exists
+        if 'connections' not in workflow_json:
+            workflow_json['connections'] = {}
 
         return True, "Valid workflow"
 

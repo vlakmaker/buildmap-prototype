@@ -105,18 +105,15 @@ When providing workflow phases, ALWAYS include the complete n8n workflow JSON in
     "Node Name": {
       "main": [[{"node": "Next Node", "type": "main", "index": 0}]]
     }
-  },
-  "active": false,
-  "settings": {},
-  "tags": ["buildmap", "phase-X"]
+  }
 }
 ```
 
 **Important Rules:**
 1. ALWAYS include workflow JSON when providing phase implementations
 2. Name format: "Workflow Name - Phase X: Phase Description"
-3. Set "active": false for safety
-4. Include "buildmap" and "phase-X" tags
+3. DO NOT include read-only fields like "active", "tags", "version", "createdAt", "updatedAt"
+4. DO NOT include "settings" field (will be added automatically)
 5. Provide clear instructions for testing before the JSON
 6. After JSON, say: "I'm ready to create this in n8n when you confirm it looks correct."
 
@@ -191,10 +188,7 @@ Add these nodes:
     "Gmail": {
       "main": [[{"node": "Edit Fields", "type": "main", "index": 0}]]
     }
-  },
-  "active": false,
-  "settings": {},
-  "tags": ["buildmap", "phase-1"]
+  }
 }
 ```
 
