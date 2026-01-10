@@ -10,6 +10,8 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from pathlib import Path
 from datetime import datetime
+from n8n_integration.n8n_client import n8n_client
+from n8n_integration.workflow_manager import workflow_manager
 
 # Load environment variables
 load_dotenv()
@@ -95,6 +97,9 @@ def initialize_session_state():
         st.session_state.messages = []
     if 'model' not in st.session_state:
         st.session_state.model = "anthropic/claude-sonnet-4"
+    
+    # Initialize workflow manager session state
+    workflow_manager.initialize_session_state()
 
 def get_openrouter_client() -> OpenAI:
     """Create and return an OpenRouter client."""
@@ -162,6 +167,61 @@ def main():
     with st.sidebar:
         st.title("🎯 BuildMap")
         st.caption("n8n Workflow Builder")
+
+        st.divider()
+
+        # n8n Connection Status
+        st.subheader("🔗 n8n Connection")
+        
+        connection_status = n8n_client.test_connection()
+        
+        if connection_status["connected"]:
+            st.success(f"✅ Connected to n8n")
+            if 'version' in connection_status:
+                st.caption(f"Version: {connection_status['version']}")
+            if 'base_url' in connection_status:
+                st.code(connection_status['base_url'], language="text")
+            if 'endpoint' in connection_status:
+                st.caption(f"Endpoint: {connection_status['endpoint']}")
+        else:
+            st.warning(f"⚠️ Not connected: {connection_status.get('error', 'Unknown error')}")
+            
+            with st.expander("🔧 Connection Help"):
+                st.markdown("""
+                **To connect to your n8n server:**
+
+                1. **Set environment variables in `.env`**:
+                   ```
+                   N8N_BASE_URL=https://your-n8n-server.com
+                   N8N_API_KEY=your_api_key_here
+                   ```
+
+                2. **Check your n8n Docker setup**:
+                   - Ensure REST API is enabled
+                   - Verify API authentication is working
+                   - Check network/firewall allows connections
+
+                3. **Restart BuildMap** after updating `.env`
+                """)
+
+        st.divider()
+
+        # Current Workflow Status
+        workflow_status = workflow_manager.get_workflow_status()
+        
+        if workflow_status["has_workflow"]:
+            st.subheader("📋 Current Workflow")
+            st.info(f"**{workflow_status['workflow_name']}**")
+            st.code(workflow_status['workflow_id'], language="text")
+            st.markdown(f"[Open in n8n]({workflow_status['n8n_url']})")
+            st.caption(f"Phase {workflow_status['current_phase']}")
+            
+            if st.button("🗑️ Reset Workflow", use_container_width=True):
+                workflow_manager.reset_current_workflow()
+                st.rerun()
+        else:
+            st.subheader("📋 Current Workflow")
+            st.info("No active workflow")
 
         st.divider()
 
@@ -235,6 +295,7 @@ def main():
         else:
             st.caption("No workflow exports yet")
 
+
         st.divider()
 
         # Info section
@@ -279,8 +340,16 @@ def main():
 
             message_placeholder.markdown(full_response)
 
-        # Add assistant response to history
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        # Process the response through workflow manager
+        processed_response = workflow_manager.process_ai_response(full_response)
+        
+        # If workflow was created/updated, show the enhanced response
+        if processed_response != full_response:
+            message_placeholder.markdown(processed_response)
+            st.session_state.messages[-1]["content"] = processed_response
+        else:
+            # Add assistant response to history
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
 
         # Rerun to update the display
         st.rerun()
