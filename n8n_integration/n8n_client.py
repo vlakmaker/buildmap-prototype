@@ -283,19 +283,31 @@ class N8NClient:
     def update_workflow(
         self, workflow_id: str, workflow_json: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Update an existing workflow in n8n"""
+        """Update an existing workflow in n8n using PUT (full replacement)
+
+        Note: n8n API uses PUT for workflow updates, not PATCH.
+        This requires sending the complete workflow object.
+        """
         # Validate connection
         connection_test = self.test_connection()
         if not connection_test["connected"]:
             return {
                 "success": False,
                 "error": f"Cannot connect to n8n: {connection_test.get('error', 'Unknown error')}",
+                "details": connection_test.get("details", ""),
+                "suggestion": connection_test.get(
+                    "suggestion", "Check connection settings"
+                ),
             }
 
         # Validate workflow JSON
         is_valid, validation_msg = self.validate_workflow_json(workflow_json)
         if not is_valid:
-            return {"success": False, "error": f"Invalid workflow: {validation_msg}"}
+            return {
+                "success": False,
+                "error": f"Invalid workflow: {validation_msg}",
+                "suggestion": "Check workflow JSON structure",
+            }
 
         try:
             headers = {
@@ -303,44 +315,189 @@ class N8NClient:
                 "Content-Type": "application/json",
             }
 
-            response = requests.patch(
+            # n8n API uses PUT for workflow updates (full replacement)
+            response = requests.put(
                 f"{self.base_url}/api/v1/workflows/{workflow_id}",
                 headers=headers,
                 json=workflow_json,
                 timeout=15,
+                verify=True,
             )
 
+            # Handle various response scenarios
             if response.status_code == 200:
-                return {"success": True}
+                workflow = response.json()
+                return {
+                    "success": True,
+                    "id": workflow["id"],
+                    "name": workflow["name"],
+                    "url": self.get_workflow_url(workflow["id"]),
+                    "message": "Workflow updated successfully",
+                }
+            elif response.status_code == 401:
+                return {
+                    "success": False,
+                    "error": "Authentication failed",
+                    "details": "Check N8N_API_KEY - it may be invalid or expired",
+                    "status_code": 401,
+                    "suggestion": "Create a new API key in n8n UI (Settings → API)",
+                }
+            elif response.status_code == 403:
+                return {
+                    "success": False,
+                    "error": "Access denied",
+                    "details": "API key may not have sufficient permissions",
+                    "status_code": 403,
+                    "suggestion": "Check API key permissions in n8n",
+                }
             elif response.status_code == 404:
-                return {"success": False, "error": f"Workflow {workflow_id} not found."}
+                return {
+                    "success": False,
+                    "error": f"Workflow {workflow_id} not found",
+                    "details": "The workflow may have been deleted or the ID is incorrect",
+                    "status_code": 404,
+                    "suggestion": "Verify workflow ID exists in n8n",
+                }
+            elif response.status_code == 405:
+                return {
+                    "success": False,
+                    "error": "Method not allowed",
+                    "details": "This error occurred because PATCH was attempted on an endpoint that requires PUT",
+                    "status_code": 405,
+                    "suggestion": "This should not happen with current implementation - check n8n_client.py",
+                }
+            elif response.status_code == 400:
+                return {
+                    "success": False,
+                    "error": "Bad request",
+                    "details": f"Invalid workflow data: {response.text[:200]}",
+                    "status_code": 400,
+                    "suggestion": "Validate workflow JSON structure and ensure all required fields are present",
+                }
+            elif response.status_code == 409:
+                return {
+                    "success": False,
+                    "error": "Conflict",
+                    "details": f"Node ID or name conflict: {response.text[:200]}",
+                    "status_code": 409,
+                    "suggestion": "Check for duplicate node IDs or names in merged workflow",
+                }
             else:
                 return {
                     "success": False,
-                    "error": f"Failed to update workflow: {response.text[:200]}",
+                    "error": f"n8n API error {response.status_code}",
+                    "details": response.text[:200],
+                    "status_code": response.status_code,
+                    "suggestion": "Check n8n logs for more details",
                 }
 
-        except requests.exceptions.RequestException as e:
-            return {"success": False, "error": f"Network error: {str(e)}"}
+        except requests.exceptions.SSLError as e:
+            return {
+                "success": False,
+                "error": "SSL certificate error",
+                "details": f"SSL verification failed: {str(e)}",
+                "suggestion": "Check SSL certificates or try verify=False for testing",
+            }
+        except requests.exceptions.Timeout:
+            return {
+                "success": False,
+                "error": "Connection timeout",
+                "details": "Server did not respond within 15 seconds",
+                "suggestion": "Check if n8n server is running and accessible",
+            }
+        except requests.exceptions.ConnectionError as e:
+            return {
+                "success": False,
+                "error": "Connection error",
+                "details": f"Could not connect to server: {str(e)}",
+                "suggestion": "Check network connectivity and server URL",
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": "Unexpected error",
+                "details": f"{type(e).__name__}: {str(e)}",
+                "suggestion": "Check n8n_client.py implementation",
+            }
 
     def get_workflow(self, workflow_id: str) -> Dict[str, Any]:
-        """Get workflow details from n8n"""
+        """Get workflow details from n8n with enhanced error handling"""
         try:
+            headers = {
+                "X-N8N-API-KEY": self.api_key,
+                "Content-Type": "application/json",
+            }
+
             response = requests.get(
                 f"{self.base_url}/api/v1/workflows/{workflow_id}",
-                headers={"X-N8N-API-KEY": self.api_key},
+                headers=headers,
                 timeout=10,
+                verify=True,
             )
 
             if response.status_code == 200:
                 return {"success": True, "workflow": response.json()}
+            elif response.status_code == 401:
+                return {
+                    "success": False,
+                    "error": "Authentication failed",
+                    "details": "Check N8N_API_KEY - it may be invalid or expired",
+                    "status_code": 401,
+                    "suggestion": "Create a new API key in n8n UI (Settings → API)",
+                }
+            elif response.status_code == 403:
+                return {
+                    "success": False,
+                    "error": "Access denied",
+                    "details": "API key may not have sufficient permissions to view this workflow",
+                    "status_code": 403,
+                    "suggestion": "Check API key permissions in n8n",
+                }
             elif response.status_code == 404:
-                return {"success": False, "error": "Workflow not found."}
+                return {
+                    "success": False,
+                    "error": "Workflow not found",
+                    "details": f"Workflow {workflow_id} does not exist or has been deleted",
+                    "status_code": 404,
+                    "suggestion": "Verify workflow ID is correct",
+                }
             else:
-                return {"success": False, "error": f"API error: {response.text[:200]}"}
+                return {
+                    "success": False,
+                    "error": f"n8n API error {response.status_code}",
+                    "details": response.text[:200],
+                    "status_code": response.status_code,
+                    "suggestion": "Check n8n logs for more details",
+                }
 
-        except requests.exceptions.RequestException as e:
-            return {"success": False, "error": f"Network error: {str(e)}"}
+        except requests.exceptions.SSLError as e:
+            return {
+                "success": False,
+                "error": "SSL certificate error",
+                "details": f"SSL verification failed: {str(e)}",
+                "suggestion": "Check SSL certificates or try verify=False for testing",
+            }
+        except requests.exceptions.Timeout:
+            return {
+                "success": False,
+                "error": "Connection timeout",
+                "details": "Server did not respond within 10 seconds",
+                "suggestion": "Check if n8n server is running and accessible",
+            }
+        except requests.exceptions.ConnectionError as e:
+            return {
+                "success": False,
+                "error": "Connection error",
+                "details": f"Could not connect to server: {str(e)}",
+                "suggestion": "Check network connectivity and server URL",
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": "Unexpected error",
+                "details": f"{type(e).__name__}: {str(e)}",
+                "suggestion": "Check n8n_client.py implementation",
+            }
 
     def get_workflow_url(self, workflow_id: str) -> str:
         """Generate proper URL for workflow"""

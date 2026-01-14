@@ -148,16 +148,26 @@ def test_full_integration():
         else:
             print(f"   ❌ Failed to retrieve: {get_result['error']}")
 
-        # Test updating workflow
+        # Test updating workflow (using GET → Modify → PUT pattern)
         print("\n3. Updating workflow...")
-        updated_workflow = sample_workflow.copy()
-        updated_workflow["name"] = "Updated Test Workflow"
+        # First, get the existing workflow
+        get_result = n8n_client.get_workflow(workflow_id)
+        if get_result["success"]:
+            existing_workflow = get_result["workflow"]
+            # Modify the workflow
+            existing_workflow["name"] = "Updated Test Workflow"
 
-        update_result = n8n_client.update_workflow(workflow_id, updated_workflow)
-        if update_result["success"]:
-            print("   ✅ Workflow updated successfully")
+            # Update using PUT (full replacement)
+            update_result = n8n_client.update_workflow(workflow_id, existing_workflow)
+            if update_result["success"]:
+                print("   ✅ Workflow updated successfully")
+                print(f"   🔗 URL: {update_result['url']}")
+            else:
+                print(f"   ❌ Failed to update: {update_result['error']}")
+                if "details" in update_result:
+                    print(f"   Details: {update_result['details']}")
         else:
-            print(f"   ❌ Failed to update: {update_result['error']}")
+            print(f"   ❌ Failed to get workflow for update: {get_result['error']}")
 
         # Cleanup - delete the test workflow
         print("\n4. Cleaning up...")
