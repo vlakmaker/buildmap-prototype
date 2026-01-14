@@ -3,13 +3,15 @@ BuildMap - n8n Workflow Builder Prototype
 A conversational assistant that guides users through building n8n workflows phase-by-phase.
 """
 
-import os
 import json
-import streamlit as st
-from openai import OpenAI
-from dotenv import load_dotenv
-from pathlib import Path
+import os
 from datetime import datetime
+from pathlib import Path
+
+import streamlit as st
+from dotenv import load_dotenv
+from openai import OpenAI
+
 from n8n_integration.n8n_client import n8n_client
 from n8n_integration.workflow_manager import workflow_manager
 
@@ -21,11 +23,12 @@ st.set_page_config(
     page_title="BuildMap - n8n Workflow Builder",
     page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 # Custom CSS for better styling
-st.markdown("""
+st.markdown(
+    """
     <style>
     .stApp {
         max-width: 1200px;
@@ -55,7 +58,9 @@ st.markdown("""
         width: 100%;
     }
     </style>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
 
 # Available models
 MODELS = {
@@ -63,12 +68,13 @@ MODELS = {
     "anthropic/claude-3.5-sonnet": "Claude 3.5 Sonnet",
     "openai/gpt-4o": "GPT-4o",
     "openai/gpt-4o-mini": "GPT-4o Mini",
-    "anthropic/claude-3-haiku": "Claude 3 Haiku"
+    "anthropic/claude-3-haiku": "Claude 3 Haiku",
 }
 
 # Create exports directory
 EXPORTS_DIR = Path(__file__).parent / "exports"
 os.makedirs(EXPORTS_DIR, exist_ok=True)
+
 
 def save_workflow(workflow_json: dict, phase_name: str) -> str:
     """Save workflow JSON to file and return filename"""
@@ -76,30 +82,33 @@ def save_workflow(workflow_json: dict, phase_name: str) -> str:
     filename = f"workflow_{phase_name}_{timestamp}.json"
     filepath = EXPORTS_DIR / filename
 
-    with open(filepath, 'w', encoding='utf-8') as f:
+    with open(filepath, "w", encoding="utf-8") as f:
         json.dump(workflow_json, f, indent=2)
 
     return filename
+
 
 def load_system_prompt() -> str:
     """Load the system prompt from file."""
     prompt_path = Path(__file__).parent / "prompts" / "system_prompt.txt"
     try:
-        with open(prompt_path, 'r', encoding='utf-8') as f:
+        with open(prompt_path, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         st.error(f"System prompt file not found at {prompt_path}")
         return "You are a helpful assistant for building n8n workflows."
 
+
 def initialize_session_state():
     """Initialize session state variables."""
-    if 'messages' not in st.session_state:
+    if "messages" not in st.session_state:
         st.session_state.messages = []
-    if 'model' not in st.session_state:
+    if "model" not in st.session_state:
         st.session_state.model = "anthropic/claude-sonnet-4"
-    
+
     # Initialize workflow manager session state
     workflow_manager.initialize_session_state()
+
 
 def get_openrouter_client() -> OpenAI:
     """Create and return an OpenRouter client."""
@@ -107,13 +116,13 @@ def get_openrouter_client() -> OpenAI:
 
     if not api_key:
         st.error("⚠️ OPENROUTER_API_KEY not found in environment variables!")
-        st.info("Please create a .env file with your OpenRouter API key. See README for instructions.")
+        st.info(
+            "Please create a .env file with your OpenRouter API key. See README for instructions."
+        )
         st.stop()
 
-    return OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=api_key
-    )
+    return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+
 
 def stream_response(client: OpenAI, messages: list, model: str):
     """Stream response from OpenRouter API."""
@@ -129,7 +138,7 @@ def stream_response(client: OpenAI, messages: list, model: str):
             messages=api_messages,
             stream=True,
             temperature=0.7,
-            max_tokens=4000
+            max_tokens=4000,
         )
 
         # Stream the response
@@ -142,6 +151,7 @@ def stream_response(client: OpenAI, messages: list, model: str):
         st.error(error_msg)
         yield error_msg
 
+
 def display_message(role: str, content: str):
     """Display a chat message with appropriate styling."""
     message_class = "user-message" if role == "user" else "assistant-message"
@@ -150,10 +160,11 @@ def display_message(role: str, content: str):
     st.markdown(
         f'<div class="chat-message {message_class}">'
         f'<div class="message-role">{role_label}</div>'
-        f'{content}'
-        f'</div>',
-        unsafe_allow_html=True
+        f"{content}"
+        f"</div>",
+        unsafe_allow_html=True,
     )
+
 
 def main():
     """Main application function."""
@@ -172,22 +183,25 @@ def main():
 
         # n8n Connection Status
         st.subheader("🔗 n8n Connection")
-        
+
         connection_status = n8n_client.test_connection()
-        
+
         if connection_status["connected"]:
             st.success(f"✅ Connected to n8n")
-            if 'version' in connection_status:
+            if "version" in connection_status:
                 st.caption(f"Version: {connection_status['version']}")
-            if 'base_url' in connection_status:
-                st.code(connection_status['base_url'], language="text")
-            if 'endpoint' in connection_status:
+            if "base_url" in connection_status:
+                st.code(connection_status["base_url"], language="text")
+            if "endpoint" in connection_status:
                 st.caption(f"Endpoint: {connection_status['endpoint']}")
         else:
-            st.warning(f"⚠️ Not connected: {connection_status.get('error', 'Unknown error')}")
-            
+            st.warning(
+                f"⚠️ Not connected: {connection_status.get('error', 'Unknown error')}"
+            )
+
             with st.expander("🔧 Connection Help"):
-                st.markdown("""
+                st.markdown(
+                    """
                 **To connect to your n8n server:**
 
                 1. **Set environment variables in `.env`**:
@@ -202,20 +216,21 @@ def main():
                    - Check network/firewall allows connections
 
                 3. **Restart BuildMap** after updating `.env`
-                """)
+                """
+                )
 
         st.divider()
 
         # Current Workflow Status
         workflow_status = workflow_manager.get_workflow_status()
-        
+
         if workflow_status["has_workflow"]:
             st.subheader("📋 Current Workflow")
             st.info(f"**{workflow_status['workflow_name']}**")
-            st.code(workflow_status['workflow_id'], language="text")
+            st.code(workflow_status["workflow_id"], language="text")
             st.markdown(f"[Open in n8n]({workflow_status['n8n_url']})")
             st.caption(f"Phase {workflow_status['current_phase']}")
-            
+
             if st.button("🗑️ Reset Workflow", use_container_width=True):
                 workflow_manager.reset_current_workflow()
                 st.rerun()
@@ -232,7 +247,7 @@ def main():
             options=list(MODELS.keys()),
             format_func=lambda x: MODELS[x],
             index=0,
-            key="model_selector"
+            key="model_selector",
         )
         st.session_state.model = selected_model
 
@@ -250,7 +265,9 @@ def main():
             st.rerun()
 
         # Export conversation button
-        if st.session_state.messages and st.button("💾 Export Conversation", use_container_width=True):
+        if st.session_state.messages and st.button(
+            "💾 Export Conversation", use_container_width=True
+        ):
             # Create export text
             export_text = "# BuildMap Conversation Export\n\n"
             for msg in st.session_state.messages:
@@ -261,7 +278,7 @@ def main():
                 label="Download as Markdown",
                 data=export_text,
                 file_name="buildmap_conversation.md",
-                mime="text/markdown"
+                mime="text/markdown",
             )
 
         st.divider()
@@ -270,15 +287,15 @@ def main():
         st.subheader("📥 Workflow Exports")
         if EXPORTS_DIR.exists():
             export_files = sorted(
-                [f for f in EXPORTS_DIR.iterdir() if f.suffix == '.json'],
+                [f for f in EXPORTS_DIR.iterdir() if f.suffix == ".json"],
                 key=lambda x: x.stat().st_mtime,
-                reverse=True
+                reverse=True,
             )
             if export_files:
                 st.caption(f"Found {len(export_files)} workflow file(s)")
                 # Show last 5 exports
                 for filepath in export_files[:5]:
-                    with open(filepath, 'rb') as f:
+                    with open(filepath, "rb") as f:
                         file_content = f.read()
                         st.download_button(
                             label=f"📄 {filepath.name}",
@@ -286,7 +303,7 @@ def main():
                             file_name=filepath.name,
                             mime="application/json",
                             key=f"download_{filepath.name}",
-                            use_container_width=True
+                            use_container_width=True,
                         )
                 if len(export_files) > 5:
                     st.caption(f"+ {len(export_files) - 5} more file(s) in exports/")
@@ -294,7 +311,6 @@ def main():
                 st.caption("No workflow exports yet")
         else:
             st.caption("No workflow exports yet")
-
 
         st.divider()
 
@@ -331,9 +347,7 @@ def main():
 
             # Stream the response
             for chunk in stream_response(
-                client,
-                st.session_state.messages,
-                st.session_state.model
+                client, st.session_state.messages, st.session_state.model
             ):
                 full_response += chunk
                 message_placeholder.markdown(full_response + "▌")
@@ -342,14 +356,16 @@ def main():
 
         # Process the response through workflow manager
         processed_response = workflow_manager.process_ai_response(full_response)
-        
+
         # If workflow was created/updated, show the enhanced response
         if processed_response != full_response:
             message_placeholder.markdown(processed_response)
             st.session_state.messages[-1]["content"] = processed_response
         else:
             # Add assistant response to history
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
+            st.session_state.messages.append(
+                {"role": "assistant", "content": full_response}
+            )
 
         # Rerun to update the display
         st.rerun()
@@ -365,6 +381,7 @@ def main():
             "4. I'll guide you through implementation in small, testable phases\n\n"
             "**Type your message below to get started!**"
         )
+
 
 if __name__ == "__main__":
     main()

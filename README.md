@@ -1,5 +1,10 @@
 # 🎯 BuildMap - n8n Workflow Builder Prototype
 
+[![CI/CD Pipeline](https://github.com/yourusername/buildmap-prototype/actions/workflows/ci-cd-pipeline.yml/badge.svg)](https://github.com/yourusername/buildmap-prototype/actions/workflows/ci-cd-pipeline.yml)
+[![Test Workflow](https://github.com/yourusername/buildmap-prototype/actions/workflows/test-workflow.yml/badge.svg)](https://github.com/yourusername/buildmap-prototype/actions/workflows/test-workflow.yml)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 BuildMap is a conversational AI assistant that helps you build n8n workflows incrementally through phase-by-phase guidance. Instead of generating entire workflows at once, BuildMap breaks down complex automation into small, testable phases (1-3 nodes each) and validates each phase before moving forward.
 
 ## 🌟 Key Features
@@ -126,14 +131,49 @@ After gathering information, BuildMap will:
 
 ```
 buildmap-prototype/
+├── .github/                # GitHub Actions workflows
+│   └── workflows/          # CI/CD pipelines
 ├── .gitignore              # Git ignore rules
 ├── .env.example            # Environment variables template
+├── .flake8                 # Flake8 linting configuration
+├── pyproject.toml          # Python project configuration
 ├── README.md               # This file
 ├── requirements.txt        # Python dependencies
+├── setup.py                # Package configuration
 ├── buildmap.py             # Main Streamlit application
+├── n8n_integration/        # n8n integration modules
 └── prompts/
     └── system_prompt.txt   # BuildMap system prompt
 ```
+
+## 🚀 CI/CD Pipeline
+
+This project includes a comprehensive CI/CD pipeline using GitHub Actions:
+
+### Workflows
+
+1. **CI/CD Pipeline** (`ci-cd-pipeline.yml`)
+   - Runs on every push and pull request to master
+   - Includes test, lint, build, and deploy stages
+   - Automatically deploys to PyPI on master branch pushes
+
+2. **Test Workflow** (`test-workflow.yml`)
+   - Runs tests across multiple Python versions (3.8-3.11)
+   - Can be triggered manually via GitHub Actions
+   - Runs automatically when Python files or requirements change
+
+### Quality Checks
+
+- **Testing**: Runs all pytest tests with coverage
+- **Linting**: Uses Flake8 for code quality
+- **Formatting**: Uses Black for consistent code style
+- **Import Sorting**: Uses isort for proper import organization
+
+### Deployment
+
+- Automatically builds and packages the application
+- Deploys to PyPI when tests and linting pass
+- Requires `PYPI_API_TOKEN` secret in GitHub repository
 
 ## 🛠️ Development
 
