@@ -3,8 +3,8 @@ Test script for n8n API integration
 """
 
 import os
-import requests
 
+import requests
 from dotenv import load_dotenv
 
 from n8n_integration.n8n_client import N8NClient, n8n_client
