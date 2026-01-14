@@ -17,7 +17,7 @@ def test_github_workflows_exist():
         print("❌ GitHub workflows directory does not exist")
         return False
 
-    required_files = ["ci-cd-pipeline.yml", "test-workflow.yml"]
+    required_files = ["ci-cd-pipeline.yml", "manual-deploy.yml"]
 
     for file in required_files:
         file_path = workflow_dir / file

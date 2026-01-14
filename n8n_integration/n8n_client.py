@@ -129,7 +129,7 @@ class N8NClient:
         if not workflow_json["nodes"] or len(workflow_json["nodes"]) == 0:
             return (
                 False,
-                "Workflow must have at least one node. Current nodes: {workflow_json.get('nodes', [])}",
+                f"Workflow must have at least one node. Current nodes: {workflow_json.get('nodes', [])}",
             )
 
         # Check node structure

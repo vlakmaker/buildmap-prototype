@@ -360,7 +360,10 @@ def main():
         # If workflow was created/updated, show the enhanced response
         if processed_response != full_response:
             message_placeholder.markdown(processed_response)
-            st.session_state.messages[-1]["content"] = processed_response
+            # Add the enhanced response to history
+            st.session_state.messages.append(
+                {"role": "assistant", "content": processed_response}
+            )
         else:
             # Add assistant response to history
             st.session_state.messages.append(

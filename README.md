@@ -1,7 +1,7 @@
 # 🎯 BuildMap - n8n Workflow Builder Prototype
 
-[![CI/CD Pipeline](https://github.com/yourusername/buildmap-prototype/actions/workflows/ci-cd-pipeline.yml/badge.svg)](https://github.com/yourusername/buildmap-prototype/actions/workflows/ci-cd-pipeline.yml)
-[![Test Workflow](https://github.com/yourusername/buildmap-prototype/actions/workflows/test-workflow.yml/badge.svg)](https://github.com/yourusername/buildmap-prototype/actions/workflows/test-workflow.yml)
+[![CI/CD Pipeline](https://github.com/vlakmaker/buildmap-prototype/actions/workflows/ci-cd-pipeline.yml/badge.svg)](https://github.com/vlakmaker/buildmap-prototype/actions/workflows/ci-cd-pipeline.yml)
+[![Manual Deploy](https://github.com/vlakmaker/buildmap-prototype/actions/workflows/manual-deploy.yml/badge.svg)](https://github.com/vlakmaker/buildmap-prototype/actions/workflows/manual-deploy.yml)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -28,7 +28,7 @@ BuildMap is a conversational AI assistant that helps you build n8n workflows inc
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/buildmap-prototype.git
+   git clone https://github.com/vlakmaker/buildmap-prototype.git
    cd buildmap-prototype
    ```
 
@@ -154,20 +154,47 @@ This project includes a comprehensive CI/CD pipeline using GitHub Actions:
 
 1. **CI/CD Pipeline** (`ci-cd-pipeline.yml`)
    - Runs on every push and pull request to master
-   - Includes test, lint, build, and deploy stages
-   - Automatically deploys to PyPI on master branch pushes
+   - Includes test, lint, security scanning, and build stages
+   - Manual deployment only (no automatic deployment for security)
+   - Tests across multiple Python versions (3.8-3.11)
 
-2. **Test Workflow** (`test-workflow.yml`)
-   - Runs tests across multiple Python versions (3.8-3.11)
-   - Can be triggered manually via GitHub Actions
-   - Runs automatically when Python files or requirements change
+2. **Manual Deployment** (`manual-deploy.yml`)
+   - Manual trigger only via GitHub Actions UI
+   - Supports production, staging, and development environments
+   - Includes package validation before deployment
+   - Can deploy to PyPI or TestPyPI based on environment
 
 ### Quality Checks
 
-- **Testing**: Runs all pytest tests with coverage
+- **Testing**: Runs pytest tests with coverage across Python 3.8-3.11
 - **Linting**: Uses Flake8 for code quality
 - **Formatting**: Uses Black for consistent code style
 - **Import Sorting**: Uses isort for proper import organization
+- **Security Scanning**: Uses Bandit, Safety, and pip-audit
+- **Type Checking**: Uses mypy for static type analysis
+
+### Pre-commit Hooks
+
+This project includes pre-commit hooks for local development:
+
+```bash
+# Install pre-commit hooks
+pip install pre-commit
+pre-commit install
+
+# Run hooks on all files
+pre-commit run --all-files
+
+# Update hooks to latest versions
+pre-commit autoupdate
+```
+
+Hooks include:
+- Code formatting (Black, isort)
+- Linting (Flake8)
+- Security scanning (Bandit)
+- Type checking (mypy)
+- General checks (trailing whitespace, YAML validation, etc.)
 
 ### Deployment
 

@@ -1,0 +1,65 @@
+name: Manual Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version to deploy'
+        required: true
+        default: '0.1.0'
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        options:
+          - 'production'
+          - 'staging'
+          - 'development'
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  manual-deploy:
+    name: Manual Deployment to PyPI
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: Install build dependencies
+      run: pip install build twine
+    
+    - name: Build package
+      run: python -m build
+    
+    - name: Validate package
+      run: twine check dist/*
+    
+    - name: Show package info
+      run: |
+        echo "Package version: ${{ github.event.inputs.version }}"
+        echo "Environment: ${{ github.event.inputs.environment }}"
+        ls -la dist/
+    
+    - name: Deploy to PyPI
+      if: github.event.inputs.environment == 'production' && github.ref == 'refs/heads/master'
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      run: twine upload dist/*
+    
+    - name: Deploy to TestPyPI (staging/development)
+      if: github.event.inputs.environment != 'production'
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+        TWINE_REPOSITORY: testpypi
+      run: twine upload --repository testpypi dist/*
