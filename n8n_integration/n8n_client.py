@@ -137,20 +137,8 @@ class N8NClient:
             if "name" not in node or "type" not in node:
                 return False, f"Node missing required fields (name/type): {node}"
 
-        # Remove read-only fields that cause issues in some n8n versions
-        # These fields cannot be set when creating/updating workflows via API
-        read_only_fields = [
-            "active",
-            "tags",
-            "version",
-            "createdAt",
-            "updatedAt",
-            "id",
-            "versionId",
-        ]
-        for field in read_only_fields:
-            if field in workflow_json:
-                del workflow_json[field]
+        # Clean workflow for API submission (removes read-only fields)
+        self._clean_workflow_for_api(workflow_json)
 
         # Ensure settings field exists (required by some n8n versions)
         if "settings" not in workflow_json:
@@ -161,6 +149,37 @@ class N8NClient:
             workflow_json["connections"] = {}
 
         return True, "Valid workflow"
+
+    def _clean_workflow_for_api(self, workflow_json: Dict[str, Any]):
+        """Remove read-only and invalid fields before sending to API"""
+        # Remove workflow-level read-only fields
+        workflow_read_only_fields = [
+            "active",
+            "tags",
+            "version",
+            "createdAt",
+            "updatedAt",
+            "id",
+            "versionId",
+            "isArchived",
+            "meta",
+            "pinData",
+            "staticData",
+            "activeVersionId",
+            "versionCounter",
+            "triggerCount",
+            "shared",
+            "activeVersion",
+        ]
+
+        for field in workflow_read_only_fields:
+            workflow_json.pop(field, None)
+
+        # Remove node-level read-only fields
+        for node in workflow_json.get("nodes", []):
+            node_read_only_fields = ["id"]
+            for field in node_read_only_fields:
+                node.pop(field, None)
 
     def create_workflow(self, workflow_json: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new workflow in n8n with enhanced error handling"""
@@ -508,26 +527,109 @@ class N8NClient:
     def merge_workflows(
         self, existing_workflow: Dict[str, Any], new_phase: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Merge new phase into existing workflow"""
+        """Merge new phase into existing workflow with proper parameter handling"""
         merged = existing_workflow.copy()
 
-        # Merge nodes (avoid duplicates by name)
-        existing_node_names = {
-            node.get("name", "") for node in existing_workflow.get("nodes", [])
-        }
-        new_nodes = [
-            node
-            for node in new_phase.get("nodes", [])
-            if node.get("name", "") not in existing_node_names
-        ]
+        # Get existing nodes for reference
+        existing_nodes = existing_workflow.get("nodes", [])
+        new_phase_nodes = new_phase.get("nodes", [])
 
-        merged["nodes"] = existing_workflow.get("nodes", []) + new_nodes
+        # Create node lookup for existing nodes (by name + type)
+        existing_node_lookup = {}
+        for i, node in enumerate(existing_nodes):
+            key = f"{node.get('name', '')}|{node.get('type', '')}"
+            existing_node_lookup[key] = {"node": node, "index": i}
 
-        # Merge connections
-        merged["connections"] = {
-            **existing_workflow.get("connections", {}),
-            **new_phase.get("connections", {}),
-        }
+        merged_nodes = existing_nodes.copy()
+
+        # Process new phase nodes
+        for new_node in new_phase_nodes:
+            node_key = f"{new_node.get('name', '')}|{new_node.get('type', '')}"
+
+            if node_key in existing_node_lookup:
+                # Node exists - update it with new parameters
+                existing_node = existing_node_lookup[node_key]["node"]
+                existing_index = existing_node_lookup[node_key]["index"]
+
+                # Deep merge parameters
+                merged_parameters = self._deep_merge_parameters(
+                    existing_node.get("parameters", {}), new_node.get("parameters", {})
+                )
+
+                # Update the existing node
+                updated_node = existing_node.copy()
+                updated_node["parameters"] = merged_parameters
+
+                # Update position if provided
+                if "position" in new_node:
+                    updated_node["position"] = new_node["position"]
+
+                # Replace in merged nodes
+                merged_nodes[existing_index] = updated_node
+
+                print(f"🔄 Updated existing node: {new_node.get('name')}")
+            else:
+                # New node - add it
+                merged_nodes.append(new_node)
+                print(f"➕ Added new node: {new_node.get('name')}")
+
+        merged["nodes"] = merged_nodes
+
+        # Merge connections (deep merge to preserve existing connections)
+        existing_connections = existing_workflow.get("connections", {})
+        new_connections = new_phase.get("connections", {})
+
+        merged_connections = existing_connections.copy()
+
+        # Add new connections without overwriting existing ones
+        for source_node, connection_data in new_connections.items():
+            if source_node in merged_connections:
+                # Merge connections for existing source node
+                existing_main = merged_connections[source_node].get("main", [])
+                new_main = connection_data.get("main", [])
+
+                # Combine connection arrays
+                combined_main = existing_main.copy()
+                for new_conn in new_main:
+                    # Check if this exact connection already exists
+                    if new_conn not in combined_main:
+                        combined_main.append(new_conn)
+
+                merged_connections[source_node]["main"] = combined_main
+            else:
+                # Add completely new source node connections
+                merged_connections[source_node] = connection_data
+
+        merged["connections"] = merged_connections
+
+        return merged
+
+    def _deep_merge_parameters(self, existing_params: Dict, new_params: Dict) -> Dict:
+        """Deep merge parameters, with new values taking precedence"""
+        if not existing_params:
+            return new_params.copy() if new_params else {}
+
+        if not new_params:
+            return existing_params.copy()
+
+        merged = existing_params.copy()
+
+        for key, new_value in new_params.items():
+            if key in merged:
+                existing_value = merged[key]
+
+                # If both values are dictionaries, merge them recursively
+                if isinstance(existing_value, dict) and isinstance(new_value, dict):
+                    merged[key] = self._deep_merge_parameters(existing_value, new_value)
+                elif isinstance(existing_value, list) and isinstance(new_value, list):
+                    # For arrays, use new value (replace) or combine based on logic
+                    merged[key] = new_value
+                else:
+                    # For primitives, new value overwrites
+                    merged[key] = new_value
+            else:
+                # New key, just add it
+                merged[key] = new_value
 
         return merged
 

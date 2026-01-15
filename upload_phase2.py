@@ -12,7 +12,7 @@ def upload_phase2_workflow():
     """Upload the corrected Phase 2 workflow to n8n"""
 
     # Load the corrected workflow JSON
-    with open("phase2_minimal_workflow.json", "r") as f:
+    with open("phase2_fixed_workflow.json", "r") as f:
         workflow_json = json.load(f)
 
     print("🚀 Uploading Phase 2 Email Triage Workflow to n8n...")

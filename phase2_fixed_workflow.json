@@ -1,0 +1,85 @@
+{
+  "name": "Email Triage - Phase 2: Rule-Based Classification",
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.payload.parts[0]?.body?.data || '' }}",
+              "rightValue": "noreply",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "condition-2", 
+              "leftValue": "={{ $json.payload.parts[0]?.body?.data || '' }}",
+              "rightValue": "unsubscribe",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "or"
+        }
+      },
+      "name": "IF Newsletter",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "addLabel",
+        "messageId": "={{ $json.id }}",
+        "labelIds": ["triage-newsletter"]
+      },
+      "name": "Add Label: Newsletter",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [850, 450]
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "IF Newsletter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Newsletter": {
+      "main": [
+        [
+          {
+            "node": "Add Label: Newsletter", 
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 3600,
+    "timezone": "UTC"
+  }
+}
