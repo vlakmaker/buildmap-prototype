@@ -25,7 +25,9 @@ class WorkflowManager:
         if "current_workflow_name" not in st.session_state:
             st.session_state.current_workflow_name = None
         if "current_phase" not in st.session_state:
-            st.session_state.current_phase = 1
+            st.session_state.current_phase = None  # None = no phase started yet
+        if "expected_next_phase" not in st.session_state:
+            st.session_state.expected_next_phase = 1
         if "workflow_phase_history" not in st.session_state:
             st.session_state.workflow_phase_history = []
 
@@ -89,12 +91,46 @@ class WorkflowManager:
 
     def process_ai_response(self, ai_response: str) -> str:
         """Process AI response and create/update workflows in n8n"""
+
+        # Check for reset command
+        if (
+            "reset workflow" in ai_response.lower()
+            or "start over" in ai_response.lower()
+        ):
+            self.reset_current_workflow()
+            return f"{ai_response}\n\n🔄 **Workflow reset successfully!**\n\nYou can now start with Phase 1 of a new workflow."
+
         workflow_json = self.extract_workflow_json_from_text(ai_response)
 
         if workflow_json:
             return self.handle_workflow_creation(workflow_json, ai_response)
         else:
             return ai_response
+
+    def validate_and_update_phase(self, detected_phase: int) -> Tuple[bool, str]:
+        """Validate phase and update session state"""
+        if st.session_state.current_workflow_id is None:
+            # No existing workflow - must be Phase 1
+            if detected_phase == 1:
+                st.session_state.current_phase = detected_phase
+                st.session_state.expected_next_phase = detected_phase + 1
+                return True, "Starting new workflow with Phase 1"
+            else:
+                return (
+                    False,
+                    f"Must start with Phase 1, detected Phase {detected_phase}",
+                )
+        else:
+            # Existing workflow - must be next expected phase
+            if detected_phase == st.session_state.expected_next_phase:
+                st.session_state.current_phase = detected_phase
+                st.session_state.expected_next_phase = detected_phase + 1
+                return True, f"Advancing to Phase {detected_phase}"
+            else:
+                return (
+                    False,
+                    f"Expected Phase {st.session_state.expected_next_phase}, but detected Phase {detected_phase}",
+                )
 
     def handle_workflow_creation(
         self, workflow_json: Dict[str, Any], original_response: str
@@ -122,15 +158,35 @@ class WorkflowManager:
         )
 
         if phase_match:
-            phase_number = int(phase_match.group(1))
-            st.session_state.current_phase = phase_number
+            detected_phase = int(phase_match.group(1))
+            is_valid, message = self.validate_and_update_phase(detected_phase)
 
-        if st.session_state.current_workflow_id:
-            # Update existing workflow (Phase 2+)
-            return self.update_existing_workflow(workflow_json, original_response)
-        else:
+            if not is_valid:
+                # Phase validation failed
+                error_section = f"\n\n❌ **Phase validation failed**\n"
+                error_section += f"**Error:** {message}\n"
+                error_section += (
+                    f"**Current Phase:** {st.session_state.current_phase or 'None'}\n"
+                )
+                error_section += (
+                    f"**Expected Next Phase:** {st.session_state.expected_next_phase}\n"
+                )
+                error_section += f"**Detected Phase:** {detected_phase}\n"
+                error_section += (
+                    f"**Suggestion:** Use the correct phase number or reset workflow\n"
+                )
+                error_section += (
+                    f"\n**Need to reset?** Use 'reset workflow' to start over\n"
+                )
+                return f"{original_response}{error_section}"
+
+        # Determine if creating new or updating existing
+        if st.session_state.current_workflow_id is None:
             # Create new workflow (Phase 1)
             return self.create_new_workflow(workflow_json, original_response)
+        else:
+            # Update existing workflow (Phase 2+)
+            return self.update_existing_workflow(workflow_json, original_response)
 
     def create_new_workflow(
         self, workflow_json: Dict[str, Any], original_response: str
@@ -277,7 +333,8 @@ class WorkflowManager:
         """Reset the current workflow state"""
         st.session_state.current_workflow_id = None
         st.session_state.current_workflow_name = None
-        st.session_state.current_phase = 1
+        st.session_state.current_phase = None
+        st.session_state.expected_next_phase = 1
         st.session_state.workflow_phase_history = []
 
     def get_workflow_status(self) -> Dict[str, Any]:
@@ -293,7 +350,10 @@ class WorkflowManager:
                     "workflow_name": getattr(
                         st.session_state, "current_workflow_name", "Unnamed Workflow"
                     ),
-                    "current_phase": getattr(st.session_state, "current_phase", 1),
+                    "current_phase": getattr(st.session_state, "current_phase", None),
+                    "expected_next_phase": getattr(
+                        st.session_state, "expected_next_phase", 1
+                    ),
                     "phase_history": getattr(
                         st.session_state, "workflow_phase_history", []
                     ),
@@ -302,10 +362,22 @@ class WorkflowManager:
                     ),
                 }
             else:
-                return {"has_workflow": False, "message": "No active workflow"}
+                return {
+                    "has_workflow": False,
+                    "message": "No active workflow",
+                    "current_phase": getattr(st.session_state, "current_phase", None),
+                    "expected_next_phase": getattr(
+                        st.session_state, "expected_next_phase", 1
+                    ),
+                }
         except Exception:
             # Handle cases where session state is not available (e.g., testing)
-            return {"has_workflow": False, "message": "Session not initialized"}
+            return {
+                "has_workflow": False,
+                "message": "Session not initialized",
+                "current_phase": None,
+                "expected_next_phase": 1,
+            }
 
 
 # Singleton instance
