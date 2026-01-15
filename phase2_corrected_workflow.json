@@ -1,0 +1,218 @@
+{
+  "name": "Email Triage - Phase 2: Rule-Based Categorization",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerOn": "newEmail",
+        "status": "unread",
+        "includeLabels": true
+      },
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "id": "gmail-trigger"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.id }}"
+      },
+      "name": "Gmail Get Message",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "id": "gmail-get-message"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "condition-1",
+                    "leftValue": "={{ $json.payload.headers.find(h => h.name === 'From')?.value }}",
+                    "rightValue": "newsletter",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "output": "triage-newsletter"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "condition-2",
+                    "leftValue": "={{ $json.payload.headers.find(h => h.name === 'From')?.value }}",
+                    "rightValue": "no-reply",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "output": "triage-notification"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "condition-3",
+                    "leftValue": "={{ $json.payload.headers.find(h => h.name === 'From')?.value }}",
+                    "rightValue": "notification",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "output": "triage-notification"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 2,
+      "position": [650, 300],
+      "id": "switch-categorization"
+    },
+    {
+      "parameters": {
+        "operation": "addLabel",
+        "messageId": "={{ $json.id }}",
+        "labelIds": "={{ $json.output }}"
+      },
+      "name": "Gmail Add Labels",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "id": "gmail-add-label"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "triagedLabel",
+              "value": "={{ $json.output }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Edit Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1050, 300],
+      "id": "edit-fields-log"
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Gmail Get Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Get Message": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Gmail Add Labels",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail Add Labels",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail Add Labels",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail Add Labels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Add Labels": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 3600,
+    "timezone": "UTC"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-15T10:44:00.000Z",
+  "versionId": "1"
+}
