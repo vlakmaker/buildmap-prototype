@@ -2,7 +2,10 @@
 BuildMap n8n Client - Handles all communication with n8n API
 """
 
+import json
 import os
+import re
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -137,7 +140,8 @@ class N8NClient:
             if "name" not in node or "type" not in node:
                 return False, f"Node missing required fields (name/type): {node}"
 
-        # Clean workflow for API submission (removes read-only fields)
+        # Normalize and clean workflow for API submission
+        self._normalize_workflow_for_api(workflow_json)
         self._clean_workflow_for_api(workflow_json)
 
         # Ensure settings field exists (required by some n8n versions)
@@ -150,30 +154,121 @@ class N8NClient:
 
         return True, "Valid workflow"
 
-    def _clean_workflow_for_api(self, workflow_json: Dict[str, Any]):
-        """Remove read-only and invalid fields before sending to API"""
-        # Remove workflow-level read-only fields
-        workflow_read_only_fields = [
-            "active",
-            "tags",
-            "version",
-            "createdAt",
-            "updatedAt",
-            "id",
-            "versionId",
-            "isArchived",
-            "meta",
-            "pinData",
-            "staticData",
-            "activeVersionId",
-            "versionCounter",
-            "triggerCount",
-            "shared",
-            "activeVersion",
-        ]
+    def _normalize_workflow_for_api(self, workflow_json: Dict[str, Any]):
+        """Normalize node parameters to match n8n's expected schema."""
+        for node in workflow_json.get("nodes", []):
+            node_type = node.get("type", "")
+            params = node.get("parameters", {})
 
-        for field in workflow_read_only_fields:
-            workflow_json.pop(field, None)
+            # Normalize Set node parameters (fields -> assignments)
+            if node_type == "n8n-nodes-base.set":
+                if "fields" in params and "assignments" not in params:
+                    fields = params.get("fields", {}) or {}
+                    assignments = []
+                    for name, value in fields.items():
+                        value_type = "string"
+                        if name.lower() in {"labels", "labelids", "currentlabels"}:
+                            value_type = "array"
+                        assignments.append(
+                            {
+                                "id": str(uuid.uuid4()),
+                                "name": name,
+                                "value": value,
+                                "type": value_type,
+                            }
+                        )
+                    node["parameters"] = {
+                        "assignments": {"assignments": assignments},
+                        "options": params.get("options", {}),
+                    }
+
+            # Normalize Gmail node parameters (legacy fields -> current schema)
+            if node_type == "n8n-nodes-base.gmail":
+                if params.get("operation") == "getMany":
+                    params["operation"] = "getAll"
+
+                if "search" in params or "maxResults" in params:
+                    filters = params.get("filters", {}) or {}
+                    search = params.get("search", "")
+                    match = re.search(r"after:(\d{4})[/-](\d{2})[/-](\d{2})", search)
+                    if match and "receivedAfter" not in filters:
+                        date_str = f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
+                        filters["receivedAfter"] = f"{date_str}T00:00:00"
+
+                    if "maxResults" in params and "limit" not in params:
+                        try:
+                            params["limit"] = int(params["maxResults"])
+                        except (TypeError, ValueError):
+                            pass
+
+                    if filters:
+                        params["filters"] = filters
+
+                    params.pop("search", None)
+                    params.pop("maxResults", None)
+                    params.pop("format", None)
+            # Normalize Set assignments for known Gmail output field names
+            if node_type == "n8n-nodes-base.set":
+                assignments_block = params.get("assignments", {})
+                assignments_list = assignments_block.get("assignments", [])
+                for assignment in assignments_list:
+                    value = assignment.get("value")
+                    if not isinstance(value, str):
+                        continue
+                    value = value.replace("{{$json.labelIds}}", "{{$json.labels}}")
+                    value = value.replace(
+                        "$json.payload.headers.find(h => h.name === 'From')?.value",
+                        "$json.From",
+                    )
+                    value = value.replace(
+                        "$json.payload.headers.find(h => h.name === 'Subject')?.value",
+                        "$json.Subject",
+                    )
+                    assignment["value"] = value
+    def _clean_workflow_for_api(self, workflow_json: Dict[str, Any]):
+        """Remove read-only and invalid fields using an allowlist approach"""
+        
+        # 1. Allowed top-level fields for writing to n8n API
+        # strictly exclude staticData and pinData as they are read-only for updates
+        allowed_fields = {
+            "name", 
+            "nodes", 
+            "connections", 
+            "settings"
+        }
+        
+        # Identify keys to remove
+        keys_to_remove = [k for k in workflow_json.keys() if k not in allowed_fields]
+        
+        # Remove unauthorized keys
+        for k in keys_to_remove:
+            print(f"🧹 Removing unauthorized key: {k}")
+            workflow_json.pop(k, None)
+            
+        # 2. Sanitize Settings Object
+        # n8n often returns fields in settings that it doesn't accept in PUT requests
+        # e.g. "availableInMCP", "callerIds" (sometimes), etc.
+        if "settings" in workflow_json and isinstance(workflow_json["settings"], dict):
+            allowed_settings = {
+                "saveExecutionProgress",
+                "saveManualExecutions",
+                "saveDataErrorExecution",
+                "saveDataSuccessExecution",
+                "executionTimeout",
+                "errorWorkflow",
+                "timezone",
+                "callerPolicy",
+                "callerIds" 
+            }
+            settings = workflow_json["settings"]
+            settings_keys_to_remove = [k for k in settings.keys() if k not in allowed_settings]
+            for k in settings_keys_to_remove:
+                print(f"🧹 Removing unauthorized setting: {k}")
+                settings.pop(k, None)
+        
+        print(f"✅ Final keys sending to n8n: {list(workflow_json.keys())}")
+        if "settings" in workflow_json:
+            print(f"✅ Final settings keys: {list(workflow_json['settings'].keys())}")
 
         # Remove node-level read-only fields
         for node in workflow_json.get("nodes", []):
@@ -205,6 +300,20 @@ class N8NClient:
             }
 
         try:
+            # Debug: show payload snapshot (redact large fields if needed)
+            print("🧪 create_workflow payload preview:")
+            print(
+                json.dumps(
+                    {
+                        "name": workflow_json.get("name"),
+                        "nodes": workflow_json.get("nodes", []),
+                        "connections": workflow_json.get("connections", {}),
+                        "settings": workflow_json.get("settings", {}),
+                    },
+                    indent=2,
+                )
+            )
+
             headers = {
                 "X-N8N-API-KEY": self.api_key,
                 "Content-Type": "application/json",
@@ -329,6 +438,21 @@ class N8NClient:
             }
 
         try:
+            # Debug: show payload snapshot (redact large fields if needed)
+            print("🧪 update_workflow payload preview:")
+            print(
+                json.dumps(
+                    {
+                        "id": workflow_id,
+                        "name": workflow_json.get("name"),
+                        "nodes": workflow_json.get("nodes", []),
+                        "connections": workflow_json.get("connections", {}),
+                        "settings": workflow_json.get("settings", {}),
+                    },
+                    indent=2,
+                )
+            )
+
             headers = {
                 "X-N8N-API-KEY": self.api_key,
                 "Content-Type": "application/json",
@@ -560,9 +684,19 @@ class N8NClient:
                 updated_node = existing_node.copy()
                 updated_node["parameters"] = merged_parameters
 
-                # Update position if provided
-                if "position" in new_node:
-                    updated_node["position"] = new_node["position"]
+                # Merge other node-level fields (settings, credentials, typeVersion, etc.)
+                for key, value in new_node.items():
+                    if key in ("parameters", "id"):
+                        continue
+                    if key == "position":
+                        updated_node["position"] = value
+                        continue
+                    if key in ("settings", "credentials") and isinstance(value, dict):
+                        updated_node[key] = self._deep_merge_parameters(
+                            existing_node.get(key, {}), value
+                        )
+                        continue
+                    updated_node[key] = value
 
                 # Replace in merged nodes
                 merged_nodes[existing_index] = updated_node

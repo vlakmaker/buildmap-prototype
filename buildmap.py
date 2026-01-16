@@ -124,10 +124,20 @@ def get_openrouter_client() -> OpenAI:
     return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
 
 
-def stream_response(client: OpenAI, messages: list, model: str):
+def stream_response(client: OpenAI, messages: list, model: str, current_workflow_json: dict = None):
     """Stream response from OpenRouter API."""
     try:
         system_prompt = load_system_prompt()
+
+        # Inject current workflow state if available
+        if current_workflow_json:
+            json_str = json.dumps(current_workflow_json, indent=2)
+            # Truncate if too large to avoid context limit issues
+            if len(json_str) > 50000:
+                json_str = json_str[:50000] + "...(truncated)"
+            
+            context_message = f"\n\nCURRENT N8N WORKFLOW STATE (SYNCED FROM SERVER):\n```json\n{json_str}\n```\nIMPORTANT: Use this JSON as the ground truth for node IDs, names, and parameters. This reflects manual changes made by the user."
+            system_prompt += context_message
 
         # Prepare messages with system prompt
         api_messages = [{"role": "system", "content": system_prompt}] + messages
@@ -230,10 +240,26 @@ def main():
             st.code(workflow_status["workflow_id"], language="text")
             st.markdown(f"[Open in n8n]({workflow_status['n8n_url']})")
             st.caption(f"Phase {workflow_status['current_phase']}")
-
-            if st.button("🗑️ Reset Workflow", use_container_width=True):
-                workflow_manager.reset_current_workflow()
-                st.rerun()
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔄 Sync", help="Fetch latest changes from n8n", use_container_width=True):
+                    with st.spinner("Syncing..."):
+                        sync_result = workflow_manager.sync_current_workflow()
+                        if sync_result["success"]:
+                            st.success("Synced!")
+                        else:
+                            st.error(f"Failed: {sync_result['message']}")
+            with col2:
+                if st.button("🗑️ Reset", help="Start over", use_container_width=True):
+                    workflow_manager.reset_current_workflow()
+                    st.rerun()
+            
+            # Show sync status
+            if st.session_state.current_workflow_json:
+                st.caption(f"✅ Context Synced")
+            else:
+                st.caption("⚠️ Context Not Synced")
         else:
             st.subheader("📋 Current Workflow")
             st.info("No active workflow")
@@ -346,8 +372,10 @@ def main():
             full_response = ""
 
             # Stream the response
+            current_json = st.session_state.get("current_workflow_json")
+            
             for chunk in stream_response(
-                client, st.session_state.messages, st.session_state.model
+                client, st.session_state.messages, st.session_state.model, current_json
             ):
                 full_response += chunk
                 message_placeholder.markdown(full_response + "▌")

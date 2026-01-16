@@ -30,6 +30,8 @@ class WorkflowManager:
             st.session_state.expected_next_phase = 1
         if "workflow_phase_history" not in st.session_state:
             st.session_state.workflow_phase_history = []
+        if "current_workflow_json" not in st.session_state:
+            st.session_state.current_workflow_json = None
 
     def extract_workflow_json_from_text(self, text: str) -> Optional[Dict[str, Any]]:
         """Extract workflow JSON from AI response text"""
@@ -336,6 +338,27 @@ class WorkflowManager:
         st.session_state.current_phase = None
         st.session_state.expected_next_phase = 1
         st.session_state.workflow_phase_history = []
+
+    def sync_current_workflow(self) -> Dict[str, Any]:
+        """Sync current workflow state from n8n"""
+        if not st.session_state.current_workflow_id:
+            return {"success": False, "message": "No active workflow to sync"}
+
+        result = self.client.get_workflow(st.session_state.current_workflow_id)
+
+        if result["success"]:
+            # Update stored JSON
+            st.session_state.current_workflow_json = result["workflow"]
+            return {
+                "success": True,
+                "message": "Successfully synced workflow from n8n",
+                "workflow": result["workflow"],
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"Failed to sync: {result.get('error')}",
+            }
 
     def get_workflow_status(self) -> Dict[str, Any]:
         """Get current workflow status for UI display"""
